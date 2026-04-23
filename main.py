@@ -1,11 +1,10 @@
 """
-main.py — Punto de entrada principal
+main.py - Punto de entrada principal
 
-Modos de ejecución:
-  Sin argumentos  → primera vez: wizard de configuración
-                    ya configurado: abre GUI de ajustes
-  --run           → archivado silencioso (llamado por el Programador de Windows)
-  --setup         → forzar el wizard de configuración inicial
+Modos:
+  Sin argumentos  -> primera vez: wizard. Ya configurado: GUI principal.
+  --run           -> archivado silencioso (Programador de Windows)
+  --setup         -> fuerza el wizard aunque ya este configurado
 """
 
 import sys
@@ -18,7 +17,7 @@ def main():
     conf = cfg.load()
     log_setup.setup(conf.get("log_path"))
 
-    # ── Modo silencioso: llamado por el Programador de Windows ───────────────
+    # Modo silencioso: llamado por el Programador de Windows
     if "--run" in sys.argv:
         import archiver
         logging.info("=" * 60)
@@ -28,53 +27,50 @@ def main():
         logging.info("=" * 60)
         return
 
-    # ── Primera ejecución o --setup forzado ──────────────────────────────────
-    first_run = not conf.get("setup_done", False)
+    first_run   = not conf.get("setup_done", False)
     force_setup = "--setup" in sys.argv
 
     if first_run or force_setup:
-        _run_wizard()
-        return
-
-    # ── Ejecución normal: abrir GUI de configuración ─────────────────────────
-    import gui
-    gui.run()
+        _run_wizard_then_gui()
+    else:
+        import gui
+        gui.run()
 
 
-def _run_wizard():
-    """Lanza el wizard, aplica la configuración resultante y abre la GUI."""
+def _run_wizard_then_gui():
+    """
+    Ejecuta el wizard (tk.Tk con mainloop propio).
+    Al terminar, si el usuario completo la configuracion, abre la GUI
+    en el MISMO proceso reusando Tk via Misc.tk (truco estandar para
+    reiniciar tkinter sin relanzar el proceso).
+    """
     import wizard
     import scheduler
     import startup
 
+    # El wizard corre su propio mainloop y retorna al terminar
     result = wizard.run_wizard()
 
     if result is None:
-        logging.info("Wizard cancelado por el usuario.")
+        logging.info("Wizard cancelado. Saliendo.")
         return
 
-    # Guardar configuración
+    # Guardar config
     cfg.save(result)
-    logging.info("Configuración inicial guardada.")
+    logging.info("Configuracion inicial guardada.")
 
-    # Registrar tarea en el Programador de Windows
+    # Registrar tarea programada
     ok_task = scheduler.register_task(result["schedule_hour"], result["schedule_minute"])
-    if ok_task:
-        logging.info("Tarea programada registrada correctamente.")
-    else:
-        logging.warning("No se pudo registrar la tarea programada.")
+    logging.info("Tarea programada: %s", "OK" if ok_task else "ERROR")
 
-    # Registrar inicio automático con Windows (según preferencia del usuario)
+    # Inicio automatico con Windows
     if result.get("autostart", True):
-        ok_startup = startup.enable_autostart()
-        if ok_startup:
-            logging.info("Inicio automático con Windows habilitado.")
-        else:
-            logging.warning("No se pudo habilitar el inicio automático.")
+        ok_st = startup.enable_autostart()
+        logging.info("Autostart: %s", "OK" if ok_st else "ERROR")
     else:
         startup.disable_autostart()
 
-    # Abrir GUI de configuración principal
+    # Abrir GUI principal (crea un nuevo tk.Tk independiente)
     import gui
     gui.run()
 

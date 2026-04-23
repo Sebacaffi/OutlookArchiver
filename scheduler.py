@@ -33,7 +33,6 @@ def register_task(hour: int, minute: int) -> bool:
         "/TR", f'{exe_path} --run',
         "/SC", "DAILY",
         "/ST", time_str,
-        "/RL", "HIGHEST",             # Nivel de privilegio
         "/RU", os.environ.get("USERNAME", ""),  # Usuario actual
     ]
 

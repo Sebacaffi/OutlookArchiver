@@ -1,25 +1,30 @@
 """
-config.py — Lectura y escritura de configuración local en JSON
+config.py - Configuracion local en JSON
 """
 
 import json
 import os
 from pathlib import Path
 
-CONFIG_DIR = Path(os.environ.get("APPDATA", Path.home())) / "OutlookArchiver"
+CONFIG_DIR  = Path(os.environ.get("APPDATA", Path.home())) / "OutlookArchiver"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULTS = {
-    "threshold_gb": 4.0,
-    "months_old": 12,
-    "pst_path": str(Path.home() / "Documents" / "OutlookArchivo.pst"),
-    "schedule_hour": 20,
-    "schedule_minute": 0,
-    "notify_email": "",
-    "log_path": str(CONFIG_DIR / "archiver.log"),
-    "enabled": True,
-    "setup_done": False,   # True una vez completado el wizard inicial
-    "autostart": True,
+    # Umbral del buzon principal para disparar el archivado
+    "threshold_gb":  3.0,
+    # Directorio base donde se crean los PST anuales
+    "pst_base_dir":  str(Path.home() / "Documents" / "ArchivosOutlook"),
+    # Limite de tamanio por PST antes de rotar (margen bajo el limite de 50 GB)
+    "pst_max_gb":    47.0,
+    # Hora y minuto de ejecucion diaria
+    "schedule_hour":   20,
+    "schedule_minute":  0,
+    # Extras
+    "notify_email":  "",
+    "log_path":      str(CONFIG_DIR / "archiver.log"),
+    "enabled":       True,
+    "setup_done":    False,
+    "autostart":     True,
 }
 
 
@@ -30,7 +35,6 @@ def load() -> dict:
         return DEFAULTS.copy()
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
-    # Rellenar claves faltantes con defaults
     for k, v in DEFAULTS.items():
         data.setdefault(k, v)
     return data
