@@ -72,6 +72,8 @@ class SetupWizard(tk.Tk):
         self.hour_var        = tk.StringVar(self, value="20")
         self.minute_var      = tk.StringVar(self, value="00")
         self.autostart_var   = tk.BooleanVar(self, value=True)
+        self.onedrive_var    = tk.BooleanVar(self, value=False)
+        self.onedrive_sub_var = tk.StringVar(self, value="Respaldo Correo")
 
         self._setup_window()
         self._build_shell()
@@ -82,7 +84,7 @@ class SetupWizard(tk.Tk):
         self.title("Outlook Archiver - Configuracion inicial")
         self.configure(bg=BG)
         self.resizable(False, False)
-        w, h = 540, 580
+        w, h = 540, 650
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
@@ -226,6 +228,18 @@ class SetupWizard(tk.Tk):
             selectcolor=BG3, relief="flat", bd=0, cursor="hand2",
         ).pack(anchor="w")
 
+        # OneDrive backup
+        od = tk.Frame(f, bg=BG)
+        od.pack(fill="x", pady=(8, 0))
+        tk.Checkbutton(
+            od, text="Copiar PST a OneDrive al rotar (requiere cerrar Outlook)",
+            variable=self.onedrive_var,
+            font=FONT_B, fg=TEXT, bg=BG,
+            activeforeground=TEXT, activebackground=BG,
+            selectcolor=BG3, relief="flat", bd=0, cursor="hand2",
+        ).pack(anchor="w")
+        self._field(f, "Subcarpeta dentro de OneDrive:", self.onedrive_sub_var, width=24)
+
     def _page_done(self):
         f = self.content
         _lbl(f, "Configuracion completada", font=FONT_BIG, color=SUCCESS).pack(
@@ -242,8 +256,9 @@ class SetupWizard(tk.Tk):
             ("PST activo",      f"Archivo {self._year_preview}.pst"),
             ("Limite por PST",  f"{conf['pst_max_gb']} GB"),
             ("Horario",         f"{conf['schedule_hour']:02d}:{conf['schedule_minute']:02d}"),
-            ("Archiva hasta",   f"{self._cutoff_preview} (inclusive)"),
+            ("Archiva hasta",   f"{self._cutoff_preview} (exclusive)"),
             ("Inicio con Win.", "Si" if conf['autostart'] else "No"),
+            ("Backup OneDrive", "Si" if conf['onedrive_backup'] else "No"),
         ]
         for k, v in rows:
             row = tk.Frame(card, bg=BG2)
@@ -310,6 +325,8 @@ class SetupWizard(tk.Tk):
             "schedule_hour":   int(self.hour_var.get()),
             "schedule_minute": int(self.minute_var.get()),
             "autostart":       bool(self.autostart_var.get()),
+            "onedrive_backup":  bool(self.onedrive_var.get()),
+            "onedrive_subpath": self.onedrive_sub_var.get().strip(),
             "notify_email":    "",
             "log_path":        str(CONFIG_DIR / "archiver.log"),
             "enabled":         True,

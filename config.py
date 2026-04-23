@@ -25,6 +25,9 @@ DEFAULTS = {
     "enabled":       True,
     "setup_done":    False,
     "autostart":     True,
+    # Respaldo OneDrive al rotar PST
+    "onedrive_backup":  False,
+    "onedrive_subpath": "Respaldo Correo",
 }
 
 

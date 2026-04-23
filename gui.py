@@ -130,7 +130,7 @@ class App(tk.Tk):
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
         w  = min(600, sw - 40)
-        h  = min(850, sh - 80)  
+        h  = min(750, sh - 80)
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{max(20,(sh-h)//2)}")
         self.minsize(520, 400)
 
@@ -145,7 +145,9 @@ class App(tk.Tk):
         self.pst_max_var   = tk.StringVar(self)
         self.hour_var      = tk.StringVar(self)
         self.minute_var    = tk.StringVar(self)
-        self.autostart_var = tk.BooleanVar(self)
+        self.autostart_var    = tk.BooleanVar(self)
+        self.onedrive_var     = tk.BooleanVar(self)
+        self.onedrive_sub_var = tk.StringVar(self)
 
     # ── UI ────────────────────────────────────────────────────────────────────
     def _build_ui(self):
@@ -153,7 +155,7 @@ class App(tk.Tk):
         tk.Frame(self, bg=ACCENT, height=3).pack(fill="x", side="top")
         hdr = tk.Frame(self, bg=BG, padx=24, pady=14)
         hdr.pack(fill="x", side="top")
-        _lbl(hdr, "Outlook Archiver",
+        _lbl(hdr, "Outlook Archiver", color=ACCENT,
              font=("Segoe UI", 14, "bold")).pack(anchor="w")
         _lbl(hdr, "Archivado automatico por año con PST rotativo",
              color=TEXT2, font=FONT_S).pack(anchor="w")
@@ -228,6 +230,14 @@ class App(tk.Tk):
         self.size_lbl = _lbl(info, "-", color=ACCENT,
                               font=("Segoe UI", 9, "bold"))
         self.size_lbl.pack(side="left", padx=(4, 0))
+
+        # Fila OneDrive
+        od_row = tk.Frame(card, bg=BG2)
+        od_row.pack(fill="x", pady=(6, 0))
+        _lbl(od_row, "OneDrive:", color=TEXT2, font=FONT_S).pack(side="left")
+        self.onedrive_status_lbl = _lbl(od_row, "-", color=TEXT2,
+                                         font=("Segoe UI", 9, "bold"))
+        self.onedrive_status_lbl.pack(side="left", padx=(4, 0))
 
     def _build_next_archive_card(self, parent):
         outer = tk.Frame(parent, bg=BG, padx=24, pady=4)
@@ -325,6 +335,18 @@ class App(tk.Tk):
             selectcolor=BG3, relief="flat", bd=0, cursor="hand2",
         ).pack(anchor="w")
 
+        # OneDrive backup
+        od = tk.Frame(card, bg=BG2)
+        od.pack(fill="x", pady=(8, 0))
+        tk.Checkbutton(
+            od, text="Copiar PST a OneDrive al rotar (cierra Outlook temporalmente)",
+            variable=self.onedrive_var,
+            font=FONT_B, fg=TEXT, bg=BG2,
+            activeforeground=TEXT, activebackground=BG2,
+            selectcolor=BG3, relief="flat", bd=0, cursor="hand2",
+        ).pack(anchor="w")
+        self._form_row(card, "Subcarpeta en OneDrive:", self.onedrive_sub_var)
+
         # Espaciado al final del scroll
         tk.Frame(parent, bg=BG, height=12).pack(fill="x")
 
@@ -343,6 +365,8 @@ class App(tk.Tk):
         self.hour_var.set(f"{int(d.get('schedule_hour', 20)):02d}")
         self.minute_var.set(f"{int(d.get('schedule_minute', 0)):02d}")
         self.autostart_var.set(d.get("autostart", True))
+        self.onedrive_var.set(d.get("onedrive_backup", False))
+        self.onedrive_sub_var.set(d.get("onedrive_subpath", "Respaldo Correo"))
 
     def _collect(self):
         d = self._config.copy()
@@ -353,6 +377,8 @@ class App(tk.Tk):
             d["schedule_hour"]   = int(self.hour_var.get())
             d["schedule_minute"] = int(self.minute_var.get())
             d["autostart"]       = self.autostart_var.get()
+            d["onedrive_backup"]  = bool(self.onedrive_var.get())
+            d["onedrive_subpath"] = self.onedrive_sub_var.get().strip()
         except ValueError as e:
             raise ValueError(f"Valor invalido: {e}")
         return d
@@ -492,6 +518,19 @@ class App(tk.Tk):
             )
         except Exception:
             self.size_lbl.config(text="N/D", fg=TEXT2)
+
+        # Estado OneDrive
+        od_path = archiver.find_onedrive_path()
+        if od_path:
+            self.onedrive_status_lbl.config(
+                text=f"Configurado  ({od_path.name})",
+                fg=SUCCESS,
+            )
+        else:
+            self.onedrive_status_lbl.config(
+                text="No encontrado — OneDrive no esta configurado en este equipo",
+                fg=DANGER,
+            )
 
         try:
             from archiver import compute_cutoff_date, compute_archive_year, \

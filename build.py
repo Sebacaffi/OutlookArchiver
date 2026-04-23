@@ -41,6 +41,7 @@ def build():
         "--hidden-import", "win32com.client",
         "--hidden-import", "win32com.shell",
         "--hidden-import", "pywintypes",
+        "--hidden-import", "win32timezone",
         "--hidden-import", "winreg",
         "--hidden-import", "pystray",
         "--hidden-import", "PIL",
