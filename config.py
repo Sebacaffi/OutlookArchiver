@@ -10,24 +10,27 @@ CONFIG_DIR  = Path(os.environ.get("APPDATA", Path.home())) / "OutlookArchiver"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULTS = {
-    # Umbral del buzon principal para disparar el archivado
-    "threshold_gb":  3.0,
-    # Directorio base donde se crean los PST anuales
-    "pst_base_dir":  str(Path.home() / "Documents" / "ArchivosOutlook"),
-    # Limite de tamanio por PST antes de rotar (margen bajo el limite de 50 GB)
-    "pst_max_gb":    47.0,
-    # Hora y minuto de ejecucion diaria
+    # Archivado
+    "threshold_gb":    3.0,
+    "pst_base_dir": "C:\\Respaldo OutlookArchiver",
+    "pst_max_gb":      30.0,
+    # Programacion
     "schedule_hour":   20,
-    "schedule_minute":  0,
-    # Extras
-    "notify_email":  "",
-    "log_path":      str(CONFIG_DIR / "archiver.log"),
-    "enabled":       True,
-    "setup_done":    False,
-    "autostart":     True,
-    # Respaldo OneDrive al rotar PST
+    "schedule_minute": 0,
+    "schedule_freq":   "daily",    # daily | weekly | monthly
+    "schedule_day":    "MON",      # MON TUE WED THU FRI SAT SUN (solo weekly)
+    # Sistema
+    "autostart":       True,
+    "autostart_silent": True,      # True = inicia en bandeja sin mostrar ventana
+    "shutdown_after":  False,      # Apagar equipo tras archivar
+    # OneDrive
     "onedrive_backup":  False,
-    "onedrive_subpath": "Respaldo Correo",
+    "onedrive_subpath": "Respaldo OutlookArchiver",
+    # Internos
+    "notify_email":    "",
+    "log_path":        str(CONFIG_DIR / "archiver.log"),
+    "enabled":         True,
+    "setup_done":      False,
 }
 
 

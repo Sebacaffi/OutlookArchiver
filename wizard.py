@@ -1,5 +1,5 @@
 """
-wizard.py - Wizard de primera ejecucion (tk.Tk standalone, NO Toplevel)
+wizard.py - Wizard de primera ejecucion (tk.Tk standalone)
 3 pasos: Bienvenida -> Configuracion -> Listo
 """
 
@@ -56,24 +56,24 @@ class SetupWizard(tk.Tk):
         self.result = None
         self._step  = 0
 
-        # Preview de fecha de corte calculada
-        from archiver import compute_cutoff_date, compute_archive_year
-        today        = date.today()
-        cutoff       = compute_cutoff_date(today)
-        arc_year     = compute_archive_year(cutoff)
+        from archiver import compute_cutoff_date, compute_archive_year, find_onedrive_path
+        today                = date.today()
+        cutoff               = compute_cutoff_date(today)
         self._cutoff_preview = cutoff.strftime("%d/%m/%Y")
-        self._year_preview   = arc_year
+        self._year_preview   = compute_archive_year(cutoff)
+        self._onedrive_ok    = find_onedrive_path() is not None
 
-        # Variables de formulario
-        self.threshold_var   = tk.StringVar(self, value="3")
-        self.pst_dir_var     = tk.StringVar(
-            self, value=str(Path.home() / "Documents" / "ArchivosOutlook"))
-        self.pst_max_var     = tk.StringVar(self, value="47")
-        self.hour_var        = tk.StringVar(self, value="20")
-        self.minute_var      = tk.StringVar(self, value="00")
-        self.autostart_var   = tk.BooleanVar(self, value=True)
-        self.onedrive_var    = tk.BooleanVar(self, value=False)
-        self.onedrive_sub_var = tk.StringVar(self, value="Respaldo Correo")
+        self.threshold_var    = tk.StringVar(self, value="3")
+        self.pst_dir_var      = tk.StringVar(self, value="C:\\Respaldo OutlookArchiver")
+        self.pst_max_var      = tk.StringVar(self, value="30")
+        self.hour_var         = tk.StringVar(self, value="20")
+        self.minute_var       = tk.StringVar(self, value="00")
+        self.freq_var         = tk.StringVar(self, value="daily")
+        self.day_var          = tk.StringVar(self, value="MON")
+        self.autostart_var    = tk.BooleanVar(self, value=True)
+        self.silent_var       = tk.BooleanVar(self, value=True)
+        self.onedrive_var     = tk.BooleanVar(self, value=False)
+        self.shutdown_var     = tk.BooleanVar(self, value=False)
 
         self._setup_window()
         self._build_shell()
@@ -84,29 +84,22 @@ class SetupWizard(tk.Tk):
         self.title("Outlook Archiver - Configuracion inicial")
         self.configure(bg=BG)
         self.resizable(False, False)
-        w, h = 540, 650
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
+        w, h = 540, 660
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
     def _build_shell(self):
         tk.Frame(self, bg=ACCENT, height=3).pack(fill="x", side="top")
-
         self.steps_bar = tk.Frame(self, bg=BG, pady=10)
         self.steps_bar.pack(fill="x", side="top")
-
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x", side="top")
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x", side="bottom")
-
         nav = tk.Frame(self, bg=BG, padx=40, pady=12)
         nav.pack(fill="x", side="bottom")
-
-        self.back_btn = _btn(nav, "<- Atras", self._prev,
-                             color=BG3, hover=BORDER, width=10)
+        self.back_btn = _btn(nav, "<- Atras", self._prev, color=BG3, hover=BORDER, width=10)
         self.back_btn.pack(side="left")
         self.next_btn = _btn(nav, "Siguiente ->", self._next, width=16)
         self.next_btn.pack(side="right")
-
         self.content = tk.Frame(self, bg=BG, padx=40, pady=16)
         self.content.pack(fill="both", expand=True, side="top")
 
@@ -117,8 +110,7 @@ class SetupWizard(tk.Tk):
         inner.pack()
         for i, name in enumerate(self.STEPS):
             if i > 0:
-                tk.Frame(inner, bg=BORDER, width=36, height=1).pack(
-                    side="left", padx=4, pady=8)
+                tk.Frame(inner, bg=BORDER, width=36, height=1).pack(side="left", padx=4, pady=8)
             col = tk.Frame(inner, bg=BG)
             col.pack(side="left", padx=6)
             dc = ACCENT if i <= self._step else BORDER
@@ -148,132 +140,153 @@ class SetupWizard(tk.Tk):
             self.next_btn.config(text="Abrir programa", bg=SUCCESS)
         self.update_idletasks()
 
-    # ── Paginas ───────────────────────────────────────────────────────────────
     def _page_welcome(self):
         f = self.content
         _lbl(f, "Outlook Archiver", font=FONT_BIG).pack(pady=(8, 2))
         _lbl(f, "Archivado automatico por año con PST rotativo",
              color=TEXT2, font=FONT_S).pack()
-
         tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=14)
 
         card = tk.Frame(f, bg=BG2, padx=18, pady=12)
         card.pack(fill="x")
-        features = [
-            "Archiva correos al PST del año correspondiente",
+        for feat in [
             f"Hoy archivaria hasta el {self._cutoff_preview} inclusive",
             f"PST de destino: Archivo {self._year_preview}.pst",
-            "Rota automaticamente al llegar al limite de 47 GB",
-            "Se inicia con Windows y corre en la bandeja del sistema",
-        ]
-        for feat in features:
+            "Crea Archivo 2026-2.pst si el primero se llena",
+            "Cambia de año automaticamente (ej: 01/02 -> cierra el 2026)",
+            "Corre en la bandeja del sistema sin molestar",
+        ]:
             row = tk.Frame(card, bg=BG2)
             row.pack(fill="x", pady=2)
-            tk.Label(row, text="OK", font=FONT_S, fg=SUCCESS, bg=BG2).pack(
-                side="left", padx=(0, 8))
+            tk.Label(row, text="OK", font=FONT_S, fg=SUCCESS, bg=BG2).pack(side="left", padx=(0, 8))
             _lbl(row, feat, color=TEXT, font=FONT_S).pack(side="left")
 
-        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=14)
+        # Estado OneDrive
+        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=12)
+        od_row = tk.Frame(f, bg=BG)
+        od_row.pack(fill="x")
+        _lbl(od_row, "OneDrive:", color=TEXT2, font=FONT_S).pack(side="left")
+        if self._onedrive_ok:
+            _lbl(od_row, "Detectado correctamente", color=SUCCESS,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
+        else:
+            _lbl(od_row, "No encontrado en este equipo",
+                 color="#F0A500", font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
+
+        tk.Frame(f, bg=BORDER, height=1).pack(fill="x", pady=12)
         _lbl(f, "Haz clic en 'Comenzar' para configurar.",
              color=TEXT2, font=FONT_S).pack()
 
     def _page_config(self):
         f = self.content
-        _lbl(f, "Configuracion", font=FONT_H).pack(anchor="w", pady=(0, 10))
+        _lbl(f, "Configuracion", font=FONT_H).pack(anchor="w", pady=(0, 8))
 
-        # Umbral buzon
-        self._field(f, "Archivar cuando el buzon supere (GB):",
-                    self.threshold_var, width=8)
+        self._field(f, "Archivar cuando el buzon supere (GB):", self.threshold_var, width=8)
 
-        # Directorio base de PSTs
+        # Carpeta PSTs
         df = tk.Frame(f, bg=BG)
         df.pack(fill="x", pady=4)
-        _lbl(df, "Carpeta donde guardar los archivos PST:",
-             color=TEXT2, font=FONT_S).pack(anchor="w")
+        _lbl(df, "Carpeta donde guardar los archivos PST:", color=TEXT2, font=FONT_S).pack(anchor="w")
         dr = tk.Frame(df, bg=BG)
         dr.pack(fill="x", pady=(4, 0))
         _entry(dr, self.pst_dir_var, width=30).pack(side="left", fill="x", expand=True)
-        tk.Button(
-            dr, text="...", command=self._browse_dir,
-            font=FONT_B, fg=TEXT, bg=BG3, activeforeground=TEXT,
-            activebackground=BORDER, relief="raised", bd=1,
-            cursor="hand2", padx=8, pady=4,
-        ).pack(side="left", padx=(6, 0))
-        _lbl(df, f"Se creara automaticamente: Archivo {self._year_preview}.pst",
-             color=TEXT2, font=("Segoe UI", 8)).pack(anchor="w", pady=(3, 0))
+        tk.Button(dr, text="...", command=self._browse_dir,
+                  font=FONT_B, fg=TEXT, bg=BG3, activeforeground=TEXT,
+                  activebackground=BORDER, relief="raised", bd=1,
+                  cursor="hand2", padx=8, pady=4).pack(side="left", padx=(6, 0))
 
-        # Limite PST
-        self._field(f, "Limite de tamanio por archivo PST (GB, max recomendado: 47):",
-                    self.pst_max_var, width=8)
+        self._field(f, "Limite de tamanio por PST (GB, max 47):", self.pst_max_var, width=8)
+
+        # Frecuencia
+        ff = tk.Frame(f, bg=BG)
+        ff.pack(fill="x", pady=4)
+        _lbl(ff, "Frecuencia de archivado:", color=TEXT2, font=FONT_S).pack(anchor="w")
+        fr = tk.Frame(ff, bg=BG)
+        fr.pack(anchor="w", pady=(4, 0))
+        for text, val in [("Diaria", "daily"), ("Semanal", "weekly"), ("Mensual", "monthly")]:
+            tk.Radiobutton(fr, text=text, variable=self.freq_var, value=val,
+                           font=FONT_S, fg=TEXT, bg=BG, activeforeground=TEXT,
+                           activebackground=BG, selectcolor=BG3,
+                           command=self._toggle_day).pack(side="left", padx=(0, 12))
+
+        self.day_frame = tk.Frame(f, bg=BG)
+        self.day_frame.pack(fill="x", pady=(2, 0))
+        _lbl(self.day_frame, "Dia de la semana:", color=TEXT2, font=FONT_S).pack(side="left")
+        days = [("Lun","MON"),("Mar","TUE"),("Mie","WED"),("Jue","THU"),
+                ("Vie","FRI"),("Sab","SAT"),("Dom","SUN")]
+        for lbl, val in days:
+            tk.Radiobutton(self.day_frame, text=lbl, variable=self.day_var, value=val,
+                           font=FONT_S, fg=TEXT, bg=BG, activeforeground=TEXT,
+                           activebackground=BG, selectcolor=BG3).pack(side="left", padx=2)
+        self._toggle_day()
 
         # Hora
         tf = tk.Frame(f, bg=BG)
         tf.pack(fill="x", pady=4)
-        _lbl(tf, "Ejecutar diariamente a las (HH : MM):",
-             color=TEXT2, font=FONT_S).pack(anchor="w")
+        _lbl(tf, "Hora de ejecucion (HH : MM):", color=TEXT2, font=FONT_S).pack(anchor="w")
         tr = tk.Frame(tf, bg=BG)
         tr.pack(anchor="w", pady=(4, 0))
         _entry(tr, self.hour_var, width=5).pack(side="left")
         _lbl(tr, "  :  ", color=TEXT, font=FONT_H).pack(side="left")
         _entry(tr, self.minute_var, width=5).pack(side="left")
 
-        # Autostart
-        ck = tk.Frame(f, bg=BG)
-        ck.pack(fill="x", pady=(10, 0))
-        tk.Checkbutton(
-            ck, text="Iniciar automaticamente con Windows",
-            variable=self.autostart_var,
-            font=FONT_B, fg=TEXT, bg=BG,
-            activeforeground=TEXT, activebackground=BG,
-            selectcolor=BG3, relief="flat", bd=0, cursor="hand2",
-        ).pack(anchor="w")
+        # Checkboxes
+        for text, var in [
+            ("Iniciar automaticamente con Windows", self.autostart_var),
+            ("Iniciar en bandeja sin mostrar ventana", self.silent_var),
+            ("Copiar PST a OneDrive al rotar (cierra Outlook temporalmente)", self.onedrive_var),
+            ("Apagar el equipo despues de archivar", self.shutdown_var),
+        ]:
+            ck = tk.Frame(f, bg=BG)
+            ck.pack(fill="x", pady=(6, 0))
+            tk.Checkbutton(ck, text=text, variable=var,
+                           font=FONT_S, fg=TEXT, bg=BG,
+                           activeforeground=TEXT, activebackground=BG,
+                           selectcolor=BG3, relief="flat", bd=0,
+                           cursor="hand2").pack(anchor="w")
 
-        # OneDrive backup
-        od = tk.Frame(f, bg=BG)
-        od.pack(fill="x", pady=(8, 0))
-        tk.Checkbutton(
-            od, text="Copiar PST a OneDrive al rotar (requiere cerrar Outlook)",
-            variable=self.onedrive_var,
-            font=FONT_B, fg=TEXT, bg=BG,
-            activeforeground=TEXT, activebackground=BG,
-            selectcolor=BG3, relief="flat", bd=0, cursor="hand2",
-        ).pack(anchor="w")
-        self._field(f, "Subcarpeta dentro de OneDrive:", self.onedrive_sub_var, width=24)
+    def _toggle_day(self):
+        state = "normal" if self.freq_var.get() == "weekly" else "disabled"
+        for w in self.day_frame.winfo_children():
+            try:
+                w.config(state=state)
+            except Exception:
+                pass
 
     def _page_done(self):
         f = self.content
-        _lbl(f, "Configuracion completada", font=FONT_BIG, color=SUCCESS).pack(
-            pady=(12, 4))
+        _lbl(f, "Configuracion completada", font=FONT_BIG, color=SUCCESS).pack(pady=(12, 4))
         _lbl(f, "La herramienta quedara activa en la bandeja del sistema.",
              color=TEXT2, font=FONT_S).pack(pady=(0, 16))
 
         conf = self._collect()
         card = tk.Frame(f, bg=BG2, padx=18, pady=12)
         card.pack(fill="x")
+        freq_labels = {"daily": "Diaria", "weekly": f"Semanal", "monthly": "Mensual (dia 1)"}
         rows = [
             ("Umbral buzon",    f"{conf['threshold_gb']} GB"),
             ("Carpeta PST",     Path(conf['pst_base_dir']).name),
             ("PST activo",      f"Archivo {self._year_preview}.pst"),
             ("Limite por PST",  f"{conf['pst_max_gb']} GB"),
+            ("Frecuencia",      freq_labels.get(conf['schedule_freq'], conf['schedule_freq'])),
             ("Horario",         f"{conf['schedule_hour']:02d}:{conf['schedule_minute']:02d}"),
             ("Archiva hasta",   f"{self._cutoff_preview} (exclusive)"),
-            ("Inicio con Win.", "Si" if conf['autostart'] else "No"),
+            ("Inicio silencioso", "Si" if conf['autostart_silent'] else "No"),
             ("Backup OneDrive", "Si" if conf['onedrive_backup'] else "No"),
+            ("Apagar tras arch.", "Si" if conf['shutdown_after'] else "No"),
         ]
         for k, v in rows:
             row = tk.Frame(card, bg=BG2)
             row.pack(fill="x", pady=2)
             _lbl(row, f"{k}:", color=TEXT2, font=FONT_S).pack(side="left")
-            _lbl(row, v, color=TEXT,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(8, 0))
+            _lbl(row, v, color=TEXT, font=("Segoe UI", 9, "bold")).pack(side="left", padx=(8, 0))
 
     def _field(self, parent, label_text, var, width=10):
         f = tk.Frame(parent, bg=BG)
-        f.pack(fill="x", pady=4)
+        f.pack(fill="x", pady=3)
         _lbl(f, label_text, color=TEXT2, font=FONT_S).pack(anchor="w")
-        _entry(f, var, width=width).pack(anchor="w", pady=(4, 0))
+        _entry(f, var, width=width).pack(anchor="w", pady=(3, 0))
 
-    # ── Navegacion ────────────────────────────────────────────────────────────
     def _next(self):
         if self._step == 0:
             self._show_step(1)
@@ -319,18 +332,22 @@ class SetupWizard(tk.Tk):
     def _collect(self):
         from config import CONFIG_DIR
         return {
-            "threshold_gb":    float(self.threshold_var.get()),
-            "pst_base_dir":    self.pst_dir_var.get().strip(),
-            "pst_max_gb":      float(self.pst_max_var.get()),
-            "schedule_hour":   int(self.hour_var.get()),
-            "schedule_minute": int(self.minute_var.get()),
-            "autostart":       bool(self.autostart_var.get()),
+            "threshold_gb":     float(self.threshold_var.get()),
+            "pst_base_dir":     self.pst_dir_var.get().strip(),
+            "pst_max_gb":       float(self.pst_max_var.get()),
+            "schedule_hour":    int(self.hour_var.get()),
+            "schedule_minute":  int(self.minute_var.get()),
+            "schedule_freq":    self.freq_var.get(),
+            "schedule_day":     self.day_var.get(),
+            "autostart":        bool(self.autostart_var.get()),
+            "autostart_silent": bool(self.silent_var.get()),
             "onedrive_backup":  bool(self.onedrive_var.get()),
-            "onedrive_subpath": self.onedrive_sub_var.get().strip(),
-            "notify_email":    "",
-            "log_path":        str(CONFIG_DIR / "archiver.log"),
-            "enabled":         True,
-            "setup_done":      True,
+            "onedrive_subpath": "Respaldo Correo",
+            "shutdown_after":   bool(self.shutdown_var.get()),
+            "notify_email":     "",
+            "log_path":         str(CONFIG_DIR / "archiver.log"),
+            "enabled":          True,
+            "setup_done":       True,
         }
 
     def _browse_dir(self):

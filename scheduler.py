@@ -1,6 +1,6 @@
 """
-scheduler.py — Registra/actualiza/elimina la tarea en el Programador de Windows
-usando schtasks.exe (no requiere permisos de administrador para tareas de usuario)
+scheduler.py - Registra/actualiza/elimina la tarea en el Programador de Windows
+Soporta frecuencia: diaria, semanal (dia configurable), mensual
 """
 
 import subprocess
@@ -9,60 +9,77 @@ import os
 import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
+logger   = logging.getLogger(__name__)
 TASK_NAME = "OutlookArchiverTask"
+
+DAYS_ES = {
+    "MON": "Lunes", "TUE": "Martes", "WED": "Miercoles",
+    "THU": "Jueves", "FRI": "Viernes", "SAT": "Sabado", "SUN": "Domingo",
+}
 
 
 def get_executable_path() -> str:
-    """Retorna la ruta del ejecutable actual (.exe o script .py)."""
     if getattr(sys, "frozen", False):
-        return sys.executable  # Empaquetado con PyInstaller
-    return f'"{sys.executable}" "{Path(__file__).parent / "main.py"}" --run'
+        return f'"{sys.executable}"'
+    return f'"{sys.executable}" "{Path(__file__).parent / "main.py"}"'
 
 
-def register_task(hour: int, minute: int) -> bool:
-    """Crea o actualiza la tarea programada en Windows."""
+def register_task(config: dict) -> bool:
+    """Crea o actualiza la tarea segun la configuracion completa."""
     exe_path = get_executable_path()
+    hour     = int(config.get("schedule_hour",   20))
+    minute   = int(config.get("schedule_minute",  0))
+    freq     = config.get("schedule_freq",  "daily")
+    day      = config.get("schedule_day",   "MON")
     time_str = f"{hour:02d}:{minute:02d}"
 
     cmd = [
-        "schtasks", "/Create",
-        "/F",                         # Sobreescribir si existe
+        "schtasks", "/Create", "/F",
         "/TN", TASK_NAME,
-        "/TR", f'{exe_path} --run',
-        "/SC", "DAILY",
+        "/TR", f"{exe_path} --run",
         "/ST", time_str,
-        "/RU", os.environ.get("USERNAME", ""),  # Usuario actual
+        "/RU", os.environ.get("USERNAME", ""),
     ]
 
-    logger.info("Registrando tarea: %s a las %s", TASK_NAME, time_str)
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    if freq == "weekly":
+        cmd += ["/SC", "WEEKLY", "/D", day]
+        logger.info("Registrando tarea: %s | semanal %s a las %s",
+                    TASK_NAME, DAYS_ES.get(day, day), time_str)
+    elif freq == "monthly":
+        cmd += ["/SC", "MONTHLY", "/D", "1"]
+        logger.info("Registrando tarea: %s | mensual (dia 1) a las %s",
+                    TASK_NAME, time_str)
+    else:
+        cmd += ["/SC", "DAILY"]
+        logger.info("Registrando tarea: %s | diaria a las %s", TASK_NAME, time_str)
 
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0:
         logger.info("Tarea registrada correctamente.")
         return True
-    else:
-        logger.error("Error al registrar tarea: %s", result.stderr)
-        return False
+    logger.error("Error al registrar tarea: %s", result.stderr.strip())
+    return False
 
 
 def remove_task() -> bool:
-    """Elimina la tarea del Programador de Windows."""
-    cmd = ["schtasks", "/Delete", "/F", "/TN", TASK_NAME]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        ["schtasks", "/Delete", "/F", "/TN", TASK_NAME],
+        capture_output=True, text=True,
+    )
     return result.returncode == 0
 
 
 def task_exists() -> bool:
-    """Verifica si la tarea ya está registrada."""
-    cmd = ["schtasks", "/Query", "/TN", TASK_NAME]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        ["schtasks", "/Query", "/TN", TASK_NAME],
+        capture_output=True, text=True,
+    )
     return result.returncode == 0
 
 
 def run_task_now() -> bool:
-    """Ejecuta la tarea inmediatamente."""
-    cmd = ["schtasks", "/Run", "/TN", TASK_NAME]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        ["schtasks", "/Run", "/TN", TASK_NAME],
+        capture_output=True, text=True,
+    )
     return result.returncode == 0

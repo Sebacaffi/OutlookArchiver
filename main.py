@@ -1,10 +1,11 @@
 """
-main.py - Punto de entrada principal
+main.py - Punto de entrada
 
 Modos:
-  Sin argumentos  -> primera vez: wizard. Ya configurado: GUI principal.
+  Sin argumentos  -> primera vez: wizard. Ya configurado: GUI.
+  --silent        -> inicia en bandeja sin mostrar ventana
   --run           -> archivado silencioso (Programador de Windows)
-  --setup         -> fuerza el wizard aunque ya este configurado
+  --setup         -> fuerza el wizard
 """
 
 import sys
@@ -17,7 +18,6 @@ def main():
     conf = cfg.load()
     log_setup.setup(conf.get("log_path"))
 
-    # Modo silencioso: llamado por el Programador de Windows
     if "--run" in sys.argv:
         import archiver
         logging.info("=" * 60)
@@ -29,50 +29,32 @@ def main():
 
     first_run   = not conf.get("setup_done", False)
     force_setup = "--setup" in sys.argv
+    silent      = "--silent" in sys.argv
 
     if first_run or force_setup:
         _run_wizard_then_gui()
     else:
         import gui
-        gui.run()
+        gui.run(start_hidden=silent)
 
 
 def _run_wizard_then_gui():
-    """
-    Ejecuta el wizard (tk.Tk con mainloop propio).
-    Al terminar, si el usuario completo la configuracion, abre la GUI
-    en el MISMO proceso reusando Tk via Misc.tk (truco estandar para
-    reiniciar tkinter sin relanzar el proceso).
-    """
-    import wizard
-    import scheduler
-    import startup
-
-    # El wizard corre su propio mainloop y retorna al terminar
+    import wizard, scheduler, startup
     result = wizard.run_wizard()
 
     if result is None:
-        logging.info("Wizard cancelado. Saliendo.")
+        logging.info("Wizard cancelado.")
         return
 
-    # Guardar config
     cfg.save(result)
-    logging.info("Configuracion inicial guardada.")
-
-    # Registrar tarea programada
-    ok_task = scheduler.register_task(result["schedule_hour"], result["schedule_minute"])
-    logging.info("Tarea programada: %s", "OK" if ok_task else "ERROR")
-
-    # Inicio automatico con Windows
+    scheduler.register_task(result)
     if result.get("autostart", True):
-        ok_st = startup.enable_autostart()
-        logging.info("Autostart: %s", "OK" if ok_st else "ERROR")
+        startup.enable_autostart(silent=result.get("autostart_silent", True))
     else:
         startup.disable_autostart()
 
-    # Abrir GUI principal (crea un nuevo tk.Tk independiente)
     import gui
-    gui.run()
+    gui.run(start_hidden=False)
 
 
 if __name__ == "__main__":
